@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace AMSabshypovolaemia
+namespace mamdanifuzzylogic
 {
     /// <summary>
     /// Linguistic levels used for both inputs (HR/BP/PV deviation) and the output (hypovolaemia severity).
@@ -81,9 +81,10 @@ namespace AMSabshypovolaemia
     {
         // ---- Input boundary points, straight from Table 1 (normalised values) ----
         // (b0 = normal/mild boundary, b1 = mild/moderate boundary, b2 = moderate/severe boundary)
-        private static readonly (double b0, double b1, double b2) HrBounds = (1.75, 3.0, 5.0);
-        private static readonly (double b0, double b1, double b2) BpBounds = (2.75, 5.0, 6.0);
-        private static readonly (double b0, double b1, double b2) PvBounds = (4.0, 6.0, 8.0);
+        // Public so the UI can draw accurate severity-zone bars using the exact same numbers.
+        public static readonly (double b0, double b1, double b2) HrBounds = (1.75, 3.0, 5.0);
+        public static readonly (double b0, double b1, double b2) BpBounds = (2.75, 5.0, 6.0);
+        public static readonly (double b0, double b1, double b2) PvBounds = (4.0, 6.0, 8.0);
 
         // ---- Output universe of discourse: abstract 0-100 severity score ----
         // Same triangular style as the professor's fan-speed example.
@@ -148,13 +149,23 @@ namespace AMSabshypovolaemia
         {
             double mildPeak = (bounds.b0 + bounds.b1) / 2.0;
             double modPeak = (bounds.b1 + bounds.b2) / 2.0;
-            double severeHalfSpan = (bounds.b2 - bounds.b1) / 2.0;
+
+            // Extend each triangle's far foot PAST the shared boundary so adjacent
+            // categories overlap and cross at exactly 0.5 right at the paper's stated
+            // boundary value. This lets a reading blend between two categories instead
+            // of belonging 100% to only one (and also removes the old "dead zone" where
+            // a value sitting exactly on a boundary had zero membership everywhere).
+            double mildFoot = (2.0 * bounds.b1) - mildPeak;      // mild's zero point, now past b1
+            double modLeftFoot = (2.0 * bounds.b1) - modPeak;    // moderate's zero point, now before b1
+            double modRightFoot = (2.0 * bounds.b2) - modPeak;   // moderate's zero point, now past b2
+            double severeRiseStart = modPeak;                    // severe starts rising where moderate peaks
+            double severePlateau = modRightFoot;                 // severe reaches full membership where moderate reaches zero
 
             return new FuzzySet
             {
-                Mild = Triangular(x, bounds.b0, mildPeak, bounds.b1),
-                Moderate = Triangular(x, bounds.b1, modPeak, bounds.b2),
-                Severe = ShoulderHigh(x, bounds.b2, bounds.b2 + severeHalfSpan)
+                Mild = Triangular(x, bounds.b0, mildPeak, mildFoot),
+                Moderate = Triangular(x, modLeftFoot, modPeak, modRightFoot),
+                Severe = ShoulderHigh(x, severeRiseStart, severePlateau)
             };
         }
 
